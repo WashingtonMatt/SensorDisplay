@@ -37,18 +37,30 @@ struct RuuviReading {
 };
 
 // Called from the NimBLE scan callback with a raw manufacturer-data
-// advertisement. Each decode function checks the source MAC against the
-// configured device(s) and the manufacturer ID in the payload before
-// attempting to decrypt/parse; returns .valid = false on any mismatch.
+// advertisement and the advertiser's MAC. Each decode function checks the
+// source MAC against the configured device and the manufacturer ID /
+// record type in the payload before attempting to decrypt/parse; returns
+// .valid = false on any mismatch (this is what makes it safe to call all
+// of these unconditionally from one scan callback and let the mismatches
+// silently no-op).
+//
+// sourceMac filtering: unlike the previous single-shunt/single-tag fork
+// (where matchesConfiguredVictronAddress()/matchesConfiguredRuuviAddress()
+// were stubbed to always return true, since there was only ever one of
+// each), multi-RuuviTag support means MAC matching is now load-bearing —
+// it's how a reading gets routed to the correct slot/gauge.
 
 VictronShuntReading decodeVictronShunt(const uint8_t *mfgData, size_t len,
+                                        const uint8_t sourceMac[6],
                                         const VictronConfig &cfg);
 
 VictronMpptReading decodeVictronMppt(const uint8_t *mfgData, size_t len,
+                                      const uint8_t sourceMac[6],
                                       const VictronConfig &cfg);
 
 // slotIndex identifies which configured RuuviTag slot this advertisement
 // matched (by MAC), so the caller can route the reading to the right
 // on-screen gauge / hi-lo tracker.
 RuuviReading decodeRuuviTag(const uint8_t *mfgData, size_t len,
+                             const uint8_t sourceMac[6],
                              const RuuviTagConfig &tagCfg);

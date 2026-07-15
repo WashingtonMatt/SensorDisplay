@@ -1,4 +1,5 @@
 #pragma once
+#include <Arduino.h>
 
 // Hardware task watchdog. Kept even in the simplified (non-captive-DNS)
 // portal because of a real gap in the vendored arduino-esp32 library:

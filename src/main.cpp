@@ -5,12 +5,7 @@
 #include "watchdog.h"
 #include "ble_decoders.h"
 #include "settings_portal.h"
-
-// TODO: display driver include + Arduino_Canvas offscreen double-buffer
-// setup — port directly from the previous ChargeScreen fork
-// (github.com/WashingtonMatt/ChargeScreen), it's confirmed working and
-// fixes the flicker issue. Not reproduced here since it's carried over
-// as-is, not new work.
+#include "display.h"
 
 static AppConfig appConfig;
 static PageEntry activePages[2 + MAX_RUUVITAGS];
@@ -40,9 +35,30 @@ void setup() {
     storageLoadAll(appConfig);
     refreshPages();
 
-    // TODO: display init (GC9A01 over SPI) + Arduino_Canvas double buffer
+    if (!displayInit()) {
+        Serial.println("[boot] display init reported a failure — continuing anyway, screen may be blank");
+    }
+    displaySetRotation(appConfig.display.rotation);
+    backlightInit();
+    backlightSetDutyPct(appConfig.display.dimmingPct);
+
+    // Smoke test only — confirms the canvas actually reaches the physical
+    // panel. Without a flush() here the GC9A01's GRAM just shows whatever
+    // random data was there at power-on (uninitialized, not a bug).
+    // Replace this with real page rendering in the loop() TODO below.
+    gfx->fillScreen(BLACK);
+    gfx->setTextColor(WHITE);
+    gfx->setTextSize(2);
+    gfx->setCursor(20, 110);
+    gfx->print("SensorDisplay");
+    gfx->flush();
+
     // TODO: touch controller init
-    // TODO: NimBLE init + start scan (Victron + RuuviTag manufacturer IDs)
+    // TODO: NimBLE init + start scan (Victron + RuuviTag manufacturer IDs).
+    // Once wired, feed each advertisement's manufacturer data + source MAC
+    // into decodeVictronShunt() / decodeVictronMppt() / decodeRuuviTag()
+    // (ble_decoders.h) and route by slotIndex from activePages[] for
+    // RuuviTag readings.
 
     Serial.printf("[boot] %u active page(s)\n", activePageCount);
 }
