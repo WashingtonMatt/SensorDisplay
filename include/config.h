@@ -19,6 +19,7 @@ static constexpr int PIN_TOUCH_SDA = 4;
 static constexpr int PIN_TOUCH_SCL = 5;
 static constexpr int PIN_TOUCH_INT = 0;
 static constexpr int PIN_TOUCH_RST = 1;
+static constexpr uint8_t CST816_ADDR = 0x15;
 
 static constexpr uint8_t  BACKLIGHT_PWM_CHANNEL   = 0;
 static constexpr uint16_t BACKLIGHT_PWM_FREQUENCY = 5000;

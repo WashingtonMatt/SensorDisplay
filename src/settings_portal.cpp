@@ -1,5 +1,6 @@
 #include "settings_portal.h"
 #include "watchdog.h"
+#include "ble_scan.h"
 #include <WiFi.h>
 #include <WebServer.h>
 #include <esp_heap_caps.h>
@@ -28,8 +29,7 @@ bool settingsPortalStart() {
         return false;
     }
 
-    // TODO: pause BLE scan here (radio contention mitigation — one shared
-    // 2.4GHz radio on ESP32-C3). e.g. bleStopScan();
+    bleScanPause(); // radio contention mitigation — one shared 2.4GHz radio on ESP32-C3
 
     WiFi.mode(WIFI_AP);
     WiFi.softAP("SensorDisplay-Setup" /* TODO: consider a password */);
@@ -50,7 +50,7 @@ void settingsPortalStop() {
     WiFi.softAPdisconnect(true);
     WiFi.mode(WIFI_OFF);
 
-    // TODO: resume BLE scan here. e.g. bleStartScan();
+    bleScanResume();
 
     portalActive = false;
     lastStopMs = millis();
