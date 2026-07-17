@@ -62,7 +62,6 @@ static void renderRuuviPage(const RuuviTagConfig &tagCfg, const RuuviReading &re
         String humidityText = String(static_cast<int>(round(reading.humidityPct))) + "%";
         drawAaCentered(AA_FONT_SMALL, humidityText, 120, 155, WHITE, COLOR_OUTDOOR_TEAL);
         drawTinyLabel("HUMIDITY", 120, 181, COLOR_DIM_TEXT);
-        drawAaCentered(AA_FONT_SMALL, "since power on", 120, 193, COLOR_DIM_TEXT, COLOR_OUTDOOR_TEAL);
     } else {
         drawAaCentered(AA_FONT_LARGE, "--F", 120, 50, WHITE, COLOR_OUTDOOR_TEAL);
         drawAaCentered(AA_FONT_SMALL, noSignalText(seenMs), 120, 106, COLOR_DIM_TEXT, COLOR_OUTDOOR_TEAL);
@@ -155,7 +154,12 @@ static void renderMpptPage(const VictronMpptReading &reading, uint32_t seenMs, b
     gfx->fillCircle(GAUGE_CENTER_X, GAUGE_CENTER_Y, GAUGE_CLEAR_RADIUS, COLOR_SOLAR_PANEL);
 
     if (haveReading) {
-        if (showGrid) drawValueGridAt(GAUGE_CENTER_X);
+        // Vertical line stops at the horizontal bar (38px, vs. the 72px
+        // default) -- the bottom row here is a single centered yield
+        // value, not a side-by-side pair like the middle row, so a
+        // vertical divider running through it doesn't apply. See the
+        // matching comment/fix on the RuuviTag page above.
+        if (showGrid) drawValueGridAt(GAUGE_CENTER_X, COLOR_VALUE_GRID, 38);
 
         String powerText = isnan(reading.panelPowerW) ? "-- W" : (String(static_cast<int>(round(reading.panelPowerW))) + "W");
         drawTinyLabel("PV POWER", 120, 42, COLOR_SOLAR_DIM_TEXT);
