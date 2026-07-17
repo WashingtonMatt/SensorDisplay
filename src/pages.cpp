@@ -15,5 +15,10 @@ uint8_t buildPageList(const AppConfig &cfg, PageEntry outPages[], uint8_t maxPag
         }
     }
 
+    // Always present, regardless of what's configured -- see pages.h.
+    if (count < maxPages) {
+        outPages[count++] = {PageType::SLEEP_SCREEN, 0};
+    }
+
     return count;
 }

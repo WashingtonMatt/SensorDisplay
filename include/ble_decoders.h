@@ -24,8 +24,10 @@ struct VictronShuntReading {
 
 struct VictronMpptReading {
     float batteryVoltageV = 0;
+    float batteryCurrentA = 0;
     float panelVoltageV = 0;
     float panelPowerW = 0;
+    float yieldTodayKwh = 0;
     uint8_t chargeState = 0;
     bool  valid = false;
 };

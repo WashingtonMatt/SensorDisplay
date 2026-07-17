@@ -6,6 +6,8 @@ static uint8_t touchRotation = 0;
 
 static constexpr int16_t SWIPE_MIN_PIXELS = 45;
 static constexpr float SWIPE_HORIZONTAL_BIAS = 1.25f;
+static constexpr int16_t TAP_MAX_MOVEMENT_PIXELS = 15;
+static constexpr uint32_t TAP_MAX_DURATION_MS = 600;
 
 void touchInit() {
     Wire.begin(PIN_TOUCH_SDA, PIN_TOUCH_SCL);
@@ -71,14 +73,16 @@ static bool readTouchPoint(TouchPoint &point) {
     return true;
 }
 
-bool touchPollForSwipe(int8_t *direction) {
+TouchEvent touchPoll() {
+    TouchEvent event;
+
     static bool wasTouched = false;
     static int16_t startX = 0, startY = 0, lastX = 0, lastY = 0;
     static uint32_t startMs = 0;
 
     TouchPoint point;
     if (!readTouchPoint(point)) {
-        return false;
+        return event;
     }
 
     if (point.touched) {
@@ -90,11 +94,11 @@ bool touchPollForSwipe(int8_t *direction) {
         lastX = point.x;
         lastY = point.y;
         wasTouched = true;
-        return false;
+        return event;
     }
 
     if (!wasTouched) {
-        return false;
+        return event;
     }
     wasTouched = false;
 
@@ -107,9 +111,16 @@ bool touchPollForSwipe(int8_t *direction) {
     if (durationMs < 1000 &&
         absDx >= SWIPE_MIN_PIXELS &&
         absDx > static_cast<int16_t>(absDy * SWIPE_HORIZONTAL_BIAS)) {
-        *direction = (dx < 0) ? -1 : 1;
-        return true;
+        event.swiped = true;
+        event.swipeDirection = (dx < 0) ? -1 : 1;
+        return event;
     }
 
-    return false;
+    if (durationMs < TAP_MAX_DURATION_MS && absDx <= TAP_MAX_MOVEMENT_PIXELS && absDy <= TAP_MAX_MOVEMENT_PIXELS) {
+        event.tapped = true;
+        event.tapX = lastX;
+        event.tapY = lastY;
+    }
+
+    return event;
 }

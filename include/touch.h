@@ -7,6 +7,14 @@ struct TouchPoint {
     int16_t y = 0;
 };
 
+struct TouchEvent {
+    bool swiped = false;
+    int8_t swipeDirection = 0; // -1 = left ("next page"), +1 = right ("previous page")
+    bool tapped = false;       // short touch with minimal movement
+    int16_t tapX = 0;
+    int16_t tapY = 0;
+};
+
 // Initializes the I2C bus (Wire) and the CST816 touch controller.
 // Call once from setup(), after displayInit()/displaySetRotation().
 void touchInit();
@@ -16,11 +24,11 @@ void touchInit();
 // displaySetRotation() is called with the same value.
 void touchSetRotation(uint8_t rotationQuarterTurns);
 
-// Polls the touch controller once. Returns true and sets *direction to
-// -1 (swipe left, e.g. "next page") or +1 (swipe right, "previous page")
-// if a horizontal swipe gesture completed since the last call. Returns
-// false otherwise (no swipe, in-progress touch, or a tap). Call every
-// loop() iteration.
+// Polls the touch controller once and reports what happened since the
+// last call: a completed horizontal swipe, OR a completed short tap
+// (small movement, short duration) with its coordinates — never both.
+// Call once per loop() iteration. Use event.tapped + tapX/tapY for
+// hit-testing tap targets like the settings button (gauge_ui.h).
 //
 // Ported from the previous fork's updateTouchSwipe(), with one
 // deliberate simplification: the screen-wake debounce logic (requiring
@@ -29,5 +37,5 @@ void touchSetRotation(uint8_t rotationQuarterTurns);
 // yet (DisplayConfig.timeoutS exists in config.h but nothing acts on it
 // yet). If a sleep timeout gets implemented later, that debounce should
 // come back — otherwise the touch that wakes the screen can double as a
-// page-swipe.
-bool touchPollForSwipe(int8_t *direction);
+// swipe or tap.
+TouchEvent touchPoll();

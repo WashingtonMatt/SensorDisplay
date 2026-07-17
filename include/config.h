@@ -57,7 +57,10 @@ static constexpr const char* NVS_KEY_RUUVI_BLOB    = "ruuvi_cfg";
 // Display settings
 static constexpr const char* NVS_KEY_ROTATION      = "disp_rot";
 static constexpr const char* NVS_KEY_DIMMING       = "disp_dim";
+static constexpr const char* NVS_KEY_NIGHT_DIMMING = "disp_night_dim";
 static constexpr const char* NVS_KEY_TIMEOUT_S     = "disp_timeout";
+static constexpr const char* NVS_KEY_NIGHT_TIMEOUT = "disp_night_to";
+static constexpr const char* NVS_KEY_SHOW_GRID     = "disp_grid";
 
 // ---------------------------------------------------------------------------
 // Config structs
@@ -83,8 +86,11 @@ struct RuuviTagConfig {
 
 struct DisplayConfig {
     uint8_t rotation = 0;      // 0-3, quarter turns
-    uint8_t dimmingPct = 100;  // 0-100
-    uint16_t timeoutS = 0;     // 0 = never dim/sleep
+    uint8_t dimmingPct = 100;  // 0-100 -- whole-device brightness
+    uint8_t nightModeDimmingPct = 0; // 0 = use dimmingPct ("Auto"), else overrides it while on the Night Mode page only
+    uint16_t timeoutS = 0;     // 0 = never dim/sleep -- applies to normal sensor pages
+    uint16_t nightModeTimeoutS = 10; // 0 = never -- applies only while on the Night Mode page (pages.h SLEEP_SCREEN), independent of timeoutS
+    bool showValueGrid = true; // divides the value cells with a small cross, ported from the old fork
 };
 
 // Runtime app state — single source of truth, loaded from NVS at boot,

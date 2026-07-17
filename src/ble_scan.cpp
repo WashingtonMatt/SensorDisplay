@@ -2,6 +2,7 @@
 #include "ble_decoders.h"
 #include "readings.h"
 #include "mac_utils.h"
+#include "diag_log.h"
 #include <NimBLEDevice.h>
 
 static const AppConfig *cfgPtr = nullptr;
@@ -17,6 +18,28 @@ class ScanCallbacks : public NimBLEScanCallbacks {
         uint8_t sourceMac[6];
         if (!macFromString(String(device->getAddress().toString().c_str()), sourceMac)) {
             return;
+        }
+
+        // Diagnostic: log any Victron-company-ID advertisement regardless
+        // of whether its MAC matches what's configured. If your shunt/
+        // MPPT never shows up here at all, either Instant Readout isn't
+        // enabled for it in the Victron app, or you're out of BLE range.
+        // If it shows up here but never gets past decodeVictronShunt/Mppt,
+        // check the per-check logs those emit -- most likely cause is a
+        // MAC typo (compare the address below against what you entered
+        // in the portal) or a wrong AES key.
+        if (len >= 2) {
+            uint16_t companyId = static_cast<uint8_t>(data[0]) | (static_cast<uint8_t>(data[1]) << 8);
+            if (companyId == VICTRON_COMPANY_ID) {
+                static uint32_t lastVictronLogMs = 0;
+                if (millis() - lastVictronLogMs > 3000) {
+                    lastVictronLogMs = millis();
+                    char buf[80];
+                    snprintf(buf, sizeof(buf), "[ble] Victron advertisement from %s (len=%u)",
+                             device->getAddress().toString().c_str(), static_cast<unsigned>(len));
+                    diagLog(buf);
+                }
+            }
         }
 
         VictronShuntReading shunt = decodeVictronShunt(data, len, sourceMac, cfgPtr->victron);
@@ -37,8 +60,7 @@ class ScanCallbacks : public NimBLEScanCallbacks {
             if (!cfgPtr->ruuviTags[i].configured) continue;
             RuuviReading r = decodeRuuviTag(data, len, sourceMac, cfgPtr->ruuviTags[i]);
             if (r.valid) {
-                latestReadings.ruuvi[i] = r;
-                latestReadings.ruuviSeenMs[i] = millis();
+                readingsRecordRuuvi(i, r, millis());
                 return;
             }
         }
@@ -65,15 +87,15 @@ void bleScanInit(const AppConfig &cfg) {
     scan->setWindow(67);
     scan->start(0, false, false);
 
-    Serial.println("[ble] scan started");
+    diagLog("[ble] scan started");
 }
 
 void bleScanPause() {
     NimBLEDevice::getScan()->stop();
-    Serial.println("[ble] scan paused");
+    diagLog("[ble] scan paused");
 }
 
 void bleScanResume() {
     NimBLEDevice::getScan()->start(0, false, false);
-    Serial.println("[ble] scan resumed");
+    diagLog("[ble] scan resumed");
 }

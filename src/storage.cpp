@@ -95,7 +95,10 @@ void storageLoadAll(AppConfig &out) {
 
     out.display.rotation = prefs.getUChar(NVS_KEY_ROTATION, 0);
     out.display.dimmingPct = prefs.getUChar(NVS_KEY_DIMMING, 100);
+    out.display.nightModeDimmingPct = prefs.getUChar(NVS_KEY_NIGHT_DIMMING, 0);
     out.display.timeoutS = prefs.getUShort(NVS_KEY_TIMEOUT_S, 0);
+    out.display.nightModeTimeoutS = prefs.getUShort(NVS_KEY_NIGHT_TIMEOUT, 10);
+    out.display.showValueGrid = prefs.getBool(NVS_KEY_SHOW_GRID, true);
 
     prefs.end();
 
@@ -116,7 +119,10 @@ void storageSaveAll(const AppConfig &cfg) {
 
     prefs.putUChar(NVS_KEY_ROTATION, cfg.display.rotation);
     prefs.putUChar(NVS_KEY_DIMMING, cfg.display.dimmingPct);
+    prefs.putUChar(NVS_KEY_NIGHT_DIMMING, cfg.display.nightModeDimmingPct);
     prefs.putUShort(NVS_KEY_TIMEOUT_S, cfg.display.timeoutS);
+    prefs.putUShort(NVS_KEY_NIGHT_TIMEOUT, cfg.display.nightModeTimeoutS);
+    prefs.putBool(NVS_KEY_SHOW_GRID, cfg.display.showValueGrid);
 
     prefs.end();
 
