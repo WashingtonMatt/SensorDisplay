@@ -31,6 +31,8 @@ bool storageLoadRuuviTags(RuuviTagConfig (&tags)[MAX_RUUVITAGS]) {
         const char* macStr = obj["mac"] | "";
         float lo = obj["lo"] | 32.0f;
         float hi = obj["hi"] | 90.0f;
+        float scaleLo = obj["sLo"] | -10.0f;
+        float scaleHi = obj["sHi"] | 110.0f;
 
         uint8_t mac[6];
         if (!macFromString(String(macStr), mac)) {
@@ -42,6 +44,8 @@ bool storageLoadRuuviTags(RuuviTagConfig (&tags)[MAX_RUUVITAGS]) {
         memcpy(tags[slot].mac, mac, 6);
         tags[slot].lowTempF = lo;
         tags[slot].hiTempF = hi;
+        tags[slot].scaleLowF = scaleLo;
+        tags[slot].scaleHighF = scaleHi;
         tags[slot].configured = true;
         slot++;
     }
@@ -60,6 +64,8 @@ bool storageSaveRuuviTags(const RuuviTagConfig (&tags)[MAX_RUUVITAGS]) {
         obj["mac"] = macToString(tags[i].mac);
         obj["lo"] = tags[i].lowTempF;
         obj["hi"] = tags[i].hiTempF;
+        obj["sLo"] = tags[i].scaleLowF;
+        obj["sHi"] = tags[i].scaleHighF;
     }
 
     String out;
@@ -92,6 +98,7 @@ void storageLoadAll(AppConfig &out) {
         prefs.getBytes(NVS_KEY_MPPT_AESKEY, out.victron.mpptAesKey, 16);
         out.victron.mpptConfigured = true;
     }
+    out.victron.solarCapacityW = prefs.getFloat(NVS_KEY_MPPT_CAPACITY, 500.0f);
 
     out.display.rotation = prefs.getUChar(NVS_KEY_ROTATION, 0);
     out.display.dimmingPct = prefs.getUChar(NVS_KEY_DIMMING, 100);
@@ -116,6 +123,7 @@ void storageSaveAll(const AppConfig &cfg) {
         prefs.putBytes(NVS_KEY_MPPT_MAC, cfg.victron.mpptMac, 6);
         prefs.putBytes(NVS_KEY_MPPT_AESKEY, cfg.victron.mpptAesKey, 16);
     }
+    prefs.putFloat(NVS_KEY_MPPT_CAPACITY, cfg.victron.solarCapacityW);
 
     prefs.putUChar(NVS_KEY_ROTATION, cfg.display.rotation);
     prefs.putUChar(NVS_KEY_DIMMING, cfg.display.dimmingPct);

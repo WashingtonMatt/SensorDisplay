@@ -1,5 +1,6 @@
 #include "gauge_ui.h"
 #include "display.h"
+#include <math.h>
 
 static uint16_t blend565(uint16_t fg, uint16_t bg, uint8_t alpha) {
     if (alpha == 255) return fg;
@@ -108,30 +109,40 @@ void drawSegmentedGaugeArcAt(int16_t centerX, float fillSweepDeg,
     }
 }
 
-uint16_t colorForRuuviTempF(float tempF, float lowF, float hiF) {
-    struct RgbStop { uint8_t r, g, b; };
-    static const RgbStop ZONE_GREEN      = {40, 200, 80};
-    static const RgbStop ZONE_LIGHT_BLUE = {80, 180, 255};
-    static const RgbStop ZONE_DARK_BLUE  = {10, 20, 140};
-    static const RgbStop ZONE_LIGHT_RED  = {255, 140, 90};
-    static const RgbStop ZONE_DARK_RED   = {180, 20, 20};
+// Fixed °F width per gradient band -- also the ring's de facto hash-mark
+// spacing. A tight range (e.g. a fridge) naturally gets fewer, closer-
+// together bands than a wide one (e.g. outdoor), with no extra config.
+static constexpr float RING_TICK_INTERVAL_F = 10.0f;
 
-    // Degrees past lowF/hiF at which the color reaches full blue/red
-    // saturation. A reading exactly at the threshold starts at the
-    // light end; readings at or beyond the margin clamp to the dark end.
-    constexpr float TEMP_ZONE_MARGIN_F = 15.0f;
+// How wide (in degrees) the current-reading indicator wedge is. Cosmetic
+// only -- doesn't need to be pixel-precise, just visible at a glance.
+static constexpr float RING_INDICATOR_WIDTH_DEG = 4.0f;
+
+static uint16_t colorForRuuviGradientF(float tempF, float scaleLowF, float scaleHighF,
+                                        float comfortLowF, float comfortHighF) {
+    struct RgbStop { uint8_t r, g, b; };
+    static const RgbStop ZONE_BLUE  = {40, 90, 230};
+    static const RgbStop ZONE_GREEN = {40, 200, 80};
+    static const RgbStop ZONE_RED   = {210, 40, 30};
+
+    // Defensive clamp in case comfortLow/High weren't kept inside the
+    // scale bounds (e.g. an old saved config edited by hand).
+    float cLo = constrain(comfortLowF, scaleLowF, scaleHighF);
+    float cHi = constrain(comfortHighF, cLo, scaleHighF);
 
     RgbStop c;
-    if (tempF < lowF) {
-        float depth = constrain((lowF - tempF) / TEMP_ZONE_MARGIN_F, 0.0f, 1.0f);
-        c.r = static_cast<uint8_t>(ZONE_LIGHT_BLUE.r + (ZONE_DARK_BLUE.r - ZONE_LIGHT_BLUE.r) * depth);
-        c.g = static_cast<uint8_t>(ZONE_LIGHT_BLUE.g + (ZONE_DARK_BLUE.g - ZONE_LIGHT_BLUE.g) * depth);
-        c.b = static_cast<uint8_t>(ZONE_LIGHT_BLUE.b + (ZONE_DARK_BLUE.b - ZONE_LIGHT_BLUE.b) * depth);
-    } else if (tempF > hiF) {
-        float depth = constrain((tempF - hiF) / TEMP_ZONE_MARGIN_F, 0.0f, 1.0f);
-        c.r = static_cast<uint8_t>(ZONE_LIGHT_RED.r + (ZONE_DARK_RED.r - ZONE_LIGHT_RED.r) * depth);
-        c.g = static_cast<uint8_t>(ZONE_LIGHT_RED.g + (ZONE_DARK_RED.g - ZONE_LIGHT_RED.g) * depth);
-        c.b = static_cast<uint8_t>(ZONE_LIGHT_RED.b + (ZONE_DARK_RED.b - ZONE_LIGHT_RED.b) * depth);
+    if (tempF <= cLo) {
+        float span = max(cLo - scaleLowF, 0.01f);
+        float frac = constrain((tempF - scaleLowF) / span, 0.0f, 1.0f);
+        c.r = static_cast<uint8_t>(ZONE_BLUE.r + (ZONE_GREEN.r - ZONE_BLUE.r) * frac);
+        c.g = static_cast<uint8_t>(ZONE_BLUE.g + (ZONE_GREEN.g - ZONE_BLUE.g) * frac);
+        c.b = static_cast<uint8_t>(ZONE_BLUE.b + (ZONE_GREEN.b - ZONE_BLUE.b) * frac);
+    } else if (tempF >= cHi) {
+        float span = max(scaleHighF - cHi, 0.01f);
+        float frac = constrain((tempF - cHi) / span, 0.0f, 1.0f);
+        c.r = static_cast<uint8_t>(ZONE_GREEN.r + (ZONE_RED.r - ZONE_GREEN.r) * frac);
+        c.g = static_cast<uint8_t>(ZONE_GREEN.g + (ZONE_RED.g - ZONE_GREEN.g) * frac);
+        c.b = static_cast<uint8_t>(ZONE_GREEN.b + (ZONE_RED.b - ZONE_GREEN.b) * frac);
     } else {
         c = ZONE_GREEN;
     }
@@ -139,6 +150,44 @@ uint16_t colorForRuuviTempF(float tempF, float lowF, float hiF) {
     return (static_cast<uint16_t>(c.r >> 3) << 11) |
            (static_cast<uint16_t>(c.g >> 2) << 5) |
            (c.b >> 3);
+}
+
+void drawGradientRingAt(int16_t centerX, bool haveReading, float tempF,
+                         float scaleLowF, float scaleHighF,
+                         float comfortLowF, float comfortHighF,
+                         uint16_t backgroundColor) {
+    float span = max(scaleHighF - scaleLowF, 1.0f);
+
+    // Band count derives from the scale width, not a fixed constant --
+    // this is what makes the ring's hash marks track the user's min/max.
+    // Capped at 60 as a sanity ceiling against a runaway config.
+    float bandCountF = constrain(roundf(span / RING_TICK_INTERVAL_F), 1.0f, 60.0f);
+    uint8_t bandCount = static_cast<uint8_t>(bandCountF);
+    float bandSweep = GAUGE_ARC_SWEEP_DEG / bandCount;
+
+    drawGaugeArcAt(centerX, GAUGE_ARC_START_DEG, GAUGE_ARC_SWEEP_DEG, backgroundColor);
+
+    for (uint8_t i = 0; i < bandCount; i++) {
+        float bandStartF = scaleLowF + span * (static_cast<float>(i) / bandCount);
+        float bandEndF   = scaleLowF + span * (static_cast<float>(i + 1) / bandCount);
+        uint16_t bandColor = colorForRuuviGradientF((bandStartF + bandEndF) * 0.5f,
+                                                      scaleLowF, scaleHighF,
+                                                      comfortLowF, comfortHighF);
+
+        float segStart = GAUGE_ARC_START_DEG + i * bandSweep + GAUGE_SEGMENT_GAP_DEG * 0.5f;
+        float segEnd = GAUGE_ARC_START_DEG + (i + 1) * bandSweep - GAUGE_SEGMENT_GAP_DEG * 0.5f;
+        float visibleSweep = max(0.0f, segEnd - segStart);
+        drawGaugeArcAt(centerX, segStart, visibleSweep, bandColor);
+    }
+
+    if (haveReading) {
+        float frac = constrain((tempF - scaleLowF) / span, 0.0f, 1.0f); // clamps to ring ends
+        float indicatorCenterDeg = GAUGE_ARC_START_DEG + frac * GAUGE_ARC_SWEEP_DEG;
+        float indicatorStart = constrain(indicatorCenterDeg - RING_INDICATOR_WIDTH_DEG * 0.5f,
+                                          GAUGE_ARC_START_DEG,
+                                          GAUGE_ARC_START_DEG + GAUGE_ARC_SWEEP_DEG - RING_INDICATOR_WIDTH_DEG);
+        drawGaugeArcAt(centerX, indicatorStart, RING_INDICATOR_WIDTH_DEG, COLOR_BLACK_SOFT);
+    }
 }
 
 void drawValueGridAt(int16_t centerX, uint16_t color, int16_t verticalLengthPx) {

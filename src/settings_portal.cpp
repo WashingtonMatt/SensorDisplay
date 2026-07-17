@@ -134,7 +134,15 @@ static void handleRuuviGet() {
         out.add(String(tag.configured ? tag.lowTempF : 32.0f, 1));
         out.add("'><label>High Temp (F)</label><input name='hi' type='number' step='0.1' value='");
         out.add(String(tag.configured ? tag.hiTempF : 90.0f, 1));
-        out.add("'><button type='submit'>Save</button>");
+        out.add("'><p class='hint'>Low/High Temp define the green \"comfort\" band on the ring "
+                "-- keep it wide for outdoor, tight for a fridge.</p>");
+        out.add("<label>Ring Scale Low (F)</label><input name='scale_lo' type='number' step='0.1' value='");
+        out.add(String(tag.configured ? tag.scaleLowF : -10.0f, 1));
+        out.add("'><label>Ring Scale High (F)</label><input name='scale_hi' type='number' step='0.1' value='");
+        out.add(String(tag.configured ? tag.scaleHighF : 110.0f, 1));
+        out.add("'><p class='hint'>Ring Scale Low/High are the endpoints of the ring's blue-to-red "
+                "gradient -- the full range this tag's dial covers.</p>");
+        out.add("<button type='submit'>Save</button>");
         out.flush();
 
         if (tag.configured) {
@@ -179,6 +187,20 @@ static void handleRuuviSave() {
     memcpy(tag.mac, mac, 6);
     tag.lowTempF = server.arg("lo").toFloat();
     tag.hiTempF = server.arg("hi").toFloat();
+
+    float scaleLo = server.arg("scale_lo").toFloat();
+    float scaleHi = server.arg("scale_hi").toFloat();
+    if (scaleHi <= scaleLo) {
+        // Guard against a misconfigured/empty scale collapsing the ring
+        // gradient math to a single point -- fall back to the defaults
+        // rather than saving something that'll divide by zero at render
+        // time.
+        scaleLo = -10.0f;
+        scaleHi = 110.0f;
+    }
+    tag.scaleLowF = scaleLo;
+    tag.scaleHighF = scaleHi;
+
     tag.configured = true;
 
     saveAndNotify();
@@ -244,6 +266,14 @@ static void handleVictronGet() {
     out.add("<p class='hint'>Find the AES key in the Victron app: tap the device, "
             "the gear icon, then the Bluetooth pairing/encryption key screen. "
             "It's the same key used for Instant Readout decoding.</p>");
+
+    out.add("<div class='card'><h3>Solar Panel Capacity</h3>"
+            "<form method='POST' action='/victron/mppt/capacity/save'>"
+            "<label>Array Capacity (W)</label><input name='capacity' type='number' step='1' value='");
+    out.add(String(static_cast<int>(v.solarCapacityW)));
+    out.add("'><p class='hint'>Sets the PV Power ring's fill ceiling on the MPPT page. "
+            "Independent of pairing -- set this whether or not a device is paired above.</p>"
+            "<button type='submit'>Save</button></form></div>");
 
     sendHtmlFooter(out);
 }
@@ -321,6 +351,17 @@ static void handleVictronClearMppt() {
     memset(cfgPtr->victron.mpptMac, 0, 6);
     memset(cfgPtr->victron.mpptAesKey, 0, 16);
     saveAndNotify();
+    server.sendHeader("Location", "/victron");
+    server.send(303);
+}
+
+static void handleVictronSaveCapacity() {
+    noteActivity();
+    float capacity = server.arg("capacity").toFloat();
+    if (capacity > 0.0f) {
+        cfgPtr->victron.solarCapacityW = capacity;
+        saveAndNotify();
+    }
     server.sendHeader("Location", "/victron");
     server.send(303);
 }
@@ -451,6 +492,7 @@ static void registerRoutes() {
     server.on("/victron/shunt/clear", HTTP_POST, handleVictronClearShunt);
     server.on("/victron/mppt/save", HTTP_POST, handleVictronSaveMppt);
     server.on("/victron/mppt/clear", HTTP_POST, handleVictronClearMppt);
+    server.on("/victron/mppt/capacity/save", HTTP_POST, handleVictronSaveCapacity);
 
     server.on("/display", HTTP_GET, handleDisplayGet);
     server.on("/display/save", HTTP_POST, handleDisplaySave);

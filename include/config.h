@@ -49,6 +49,7 @@ static constexpr const char* NVS_KEY_SHUNT_MAC     = "shunt_mac";
 static constexpr const char* NVS_KEY_SHUNT_AESKEY  = "shunt_key";
 static constexpr const char* NVS_KEY_MPPT_MAC      = "mppt_mac";
 static constexpr const char* NVS_KEY_MPPT_AESKEY   = "mppt_key";
+static constexpr const char* NVS_KEY_MPPT_CAPACITY = "mppt_cap_w";
 
 // RuuviTags — stored as a single JSON array blob under one key
 // (see storage.h) rather than N scalar keys.
@@ -74,13 +75,20 @@ struct VictronConfig {
     uint8_t mpptMac[6] = {0};
     bool    mpptConfigured = false;
     uint8_t mpptAesKey[16] = {0};
+
+    // MPPT ring's fill ceiling -- the panel array's rated wattage.
+    // Independent of mpptConfigured/pairing, so it can be set before or
+    // after pairing a physical device.
+    float   solarCapacityW = 500.0f;
 };
 
 struct RuuviTagConfig {
     char    label[LABEL_MAX_LEN] = {0};   // e.g. "Outdoor", "Indoor", "Refrigerator", "RuuviTag"
     uint8_t mac[6] = {0};
-    float   lowTempF = 32.0f;             // gauge arc: blue below this
-    float   hiTempF  = 90.0f;             // gauge arc: red above this
+    float   lowTempF = 32.0f;             // comfort/"normal" zone lower bound (green band on the ring)
+    float   hiTempF  = 90.0f;             // comfort/"normal" zone upper bound (green band on the ring)
+    float   scaleLowF  = -10.0f;          // ring gradient: pure blue at/below this
+    float   scaleHighF = 110.0f;          // ring gradient: pure red at/above this
     bool    configured = false;
 };
 

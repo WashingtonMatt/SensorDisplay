@@ -19,23 +19,20 @@ static String noSignalText(uint32_t seenMs) {
 // labeled tags. The two side values are the sensor's actual observed
 // low/high since boot (readingsRecordRuuvi() in readings.cpp tracks
 // this) -- not the same thing as the tag's *configured* gauge-coloring
-// range (RuuviTagConfig::lowTempF/hiTempF), which only drives the ring
-// color. A true rolling-24h version of this (vs. since-boot) is a
-// follow-up -- it needs timestamped samples with eviction.
+// range (RuuviTagConfig::lowTempF/hiTempF/scaleLowF/scaleHighF), which
+// only drives the ring's gradient and comfort band. A true rolling-24h
+// version of this (vs. since-boot) is a follow-up -- it needs
+// timestamped samples with eviction.
 static void renderRuuviPage(const RuuviTagConfig &tagCfg, const RuuviReading &reading, uint32_t seenMs,
                              float runningLowF, float runningHighF, bool showGrid) {
     bool haveReading = reading.valid && !isStale(seenMs);
 
     gfx->fillScreen(COLOR_OUTDOOR_TEAL);
 
-    float range = tagCfg.hiTempF - tagCfg.lowTempF;
-    float frac = (haveReading && range > 0.0f)
-                     ? constrain((reading.temperatureF - tagCfg.lowTempF) / range, 0.0f, 1.0f)
-                     : 0.0f;
-    uint16_t ringColor = haveReading
-                              ? colorForRuuviTempF(reading.temperatureF, tagCfg.lowTempF, tagCfg.hiTempF)
-                              : COLOR_RING_TRACK;
-    drawSegmentedGaugeArcAt(GAUGE_CENTER_X, GAUGE_ARC_SWEEP_DEG * frac, COLOR_RING_TRACK, ringColor, COLOR_OUTDOOR_TEAL);
+    drawGradientRingAt(GAUGE_CENTER_X, haveReading, reading.temperatureF,
+                        tagCfg.scaleLowF, tagCfg.scaleHighF,
+                        tagCfg.lowTempF, tagCfg.hiTempF,
+                        COLOR_OUTDOOR_TEAL);
     gfx->fillCircle(GAUGE_CENTER_X, GAUGE_CENTER_Y, GAUGE_CLEAR_RADIUS, COLOR_OUTDOOR_TEAL);
 
     String label = tagCfg.label;
@@ -134,22 +131,17 @@ static const char *mpptChargeStateText(uint8_t state) {
     }
 }
 
-// Placeholder ring-fill ceiling for PV power, pending a configurable
-// "solar array watts" setting (the old fork had one via its settings
-// portal; this config doesn't expose it yet — add it alongside the
-// Victron key fields when the portal routes get built).
-static constexpr float MPPT_RING_MAX_WATTS = 400.0f;
-
 // --- Victron MPPT page, ported from the previous fork's drawPageTwo() -----
-static void renderMpptPage(const VictronMpptReading &reading, uint32_t seenMs, bool showGrid) {
+static void renderMpptPage(const VictronMpptReading &reading, uint32_t seenMs, bool showGrid, float capacityW) {
     bool haveReading = reading.valid && !isStale(seenMs);
 
     gfx->fillScreen(COLOR_SOLAR_PANEL);
 
+    float ringMaxW = max(capacityW, 1.0f); // guard against a zero/negative config value
     float ringPower = (haveReading && !isnan(reading.panelPowerW))
-                           ? constrain(reading.panelPowerW, 0.0f, MPPT_RING_MAX_WATTS)
+                           ? constrain(reading.panelPowerW, 0.0f, ringMaxW)
                            : 0.0f;
-    drawSegmentedGaugeArcAt(GAUGE_CENTER_X, GAUGE_ARC_SWEEP_DEG * ringPower / MPPT_RING_MAX_WATTS,
+    drawSegmentedGaugeArcAt(GAUGE_CENTER_X, GAUGE_ARC_SWEEP_DEG * ringPower / ringMaxW,
                              COLOR_SOLAR_TRACK, COLOR_SOLAR_ORANGE, COLOR_SOLAR_PANEL);
     gfx->fillCircle(GAUGE_CENTER_X, GAUGE_CENTER_Y, GAUGE_CLEAR_RADIUS, COLOR_SOLAR_PANEL);
 
@@ -288,7 +280,7 @@ void renderPage(const PageEntry &page, const AppConfig &cfg) {
             renderShuntPage(latestReadings.shunt, latestReadings.shuntSeenMs, showGrid);
             break;
         case PageType::VICTRON_MPPT:
-            renderMpptPage(latestReadings.mppt, latestReadings.mpptSeenMs, showGrid);
+            renderMpptPage(latestReadings.mppt, latestReadings.mpptSeenMs, showGrid, cfg.victron.solarCapacityW);
             break;
         case PageType::RUUVI_TAG:
             renderRuuviPage(cfg.ruuviTags[page.slotIndex],

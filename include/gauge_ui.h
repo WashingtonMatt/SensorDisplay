@@ -60,13 +60,22 @@ void drawSegmentedGaugeArcAt(int16_t centerX, float fillSweepDeg,
                               uint16_t trackColor, uint16_t fillColor,
                               uint16_t backgroundColor = COLOR_PANEL_BLUE);
 
-// Zone-based coloring: solid green for anything between [lowF, hiF]
-// ("normal range"), fading from light to dark blue the further below
-// lowF a reading is, and light to dark red the further above hiF --
-// saturating at TEMP_ZONE_MARGIN_F degrees past the threshold. This is
-// deliberately NOT a gradient spanning the whole [lowF, hiF] range --
-// lowF/hiF are comfort thresholds, not endpoints of a color scale.
-uint16_t colorForRuuviTempF(float tempF, float lowF, float hiF);
+// --- RuuviTag gradient ring ---------------------------------------------
+// Continuous blue -> green -> red gradient spanning [scaleLowF, scaleHighF],
+// rendered as fixed-width bands (RING_TICK_INTERVAL_F degrees Fahrenheit
+// each, see gauge_ui.cpp) rather than a true per-pixel gradient -- the
+// simplest implementation that still reads as a gradient at a glance, and
+// doubles as the ring's hash marks. The green "comfort" plateau sits
+// between [comfortLowF, comfortHighF] (independently configurable per
+// RuuviTag -- wide for outdoor, tight for a fridge). Always fully lit,
+// regardless of whether there's a current reading. A short black wedge
+// marks the current reading's position; pass haveReading=false to hide it
+// (e.g. no signal yet). Readings outside [scaleLowF, scaleHighF] clamp
+// the wedge to the nearest ring end rather than disappearing.
+void drawGradientRingAt(int16_t centerX, bool haveReading, float tempF,
+                         float scaleLowF, float scaleHighF,
+                         float comfortLowF, float comfortHighF,
+                         uint16_t backgroundColor = COLOR_PANEL_BLUE);
 
 // --- Value grid --------------------------------------------------------
 static constexpr uint16_t COLOR_VALUE_GRID = 0x6B4D;
