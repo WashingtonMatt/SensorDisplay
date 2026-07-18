@@ -62,16 +62,15 @@ void drawSegmentedGaugeArcAt(int16_t centerX, float fillSweepDeg,
 
 // --- RuuviTag gradient ring ---------------------------------------------
 // Continuous blue -> green -> red gradient spanning [scaleLowF, scaleHighF],
-// rendered as fixed-width bands (RING_TICK_INTERVAL_F degrees Fahrenheit
-// each, see gauge_ui.cpp) rather than a true per-pixel gradient -- the
-// simplest implementation that still reads as a gradient at a glance, and
-// doubles as the ring's hash marks. The green "comfort" plateau sits
-// between [comfortLowF, comfortHighF] (independently configurable per
-// RuuviTag -- wide for outdoor, tight for a fridge). Always fully lit,
-// regardless of whether there's a current reading. A short black wedge
-// marks the current reading's position; pass haveReading=false to hide it
-// (e.g. no signal yet). Readings outside [scaleLowF, scaleHighF] clamp
-// the wedge to the nearest ring end rather than disappearing.
+// rendered as many thin no-gap slices (see RING_GRADIENT_SLICE_DEG in
+// gauge_ui.cpp) -- fine enough to read as smooth rather than stepped.
+// The green "comfort" plateau sits between [comfortLowF, comfortHighF]
+// (independently configurable per RuuviTag -- wide for outdoor, tight for
+// a fridge). Always fully lit, regardless of whether there's a current
+// reading. A short black wedge marks the current reading's position;
+// pass haveReading=false to hide it (e.g. no signal yet). Readings
+// outside [scaleLowF, scaleHighF] clamp the wedge to the nearest ring
+// end rather than disappearing.
 void drawGradientRingAt(int16_t centerX, bool haveReading, float tempF,
                          float scaleLowF, float scaleHighF,
                          float comfortLowF, float comfortHighF,

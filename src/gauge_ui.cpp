@@ -109,10 +109,12 @@ void drawSegmentedGaugeArcAt(int16_t centerX, float fillSweepDeg,
     }
 }
 
-// Fixed °F width per gradient band -- also the ring's de facto hash-mark
-// spacing. A tight range (e.g. a fridge) naturally gets fewer, closer-
-// together bands than a wide one (e.g. outdoor), with no extra config.
-static constexpr float RING_TICK_INTERVAL_F = 10.0f;
+// Angular width of each gradient slice -- fine enough to read as a smooth
+// continuous gradient rather than visible steps, without the draw-call
+// count of a true per-pixel fill. No gap between slices (unlike the
+// segmented gauge/hash-mark look elsewhere) so nothing on the ring itself
+// competes visually with the black indicator wedge.
+static constexpr float RING_GRADIENT_SLICE_DEG = 2.0f;
 
 // How wide (in degrees) the current-reading indicator wedge is. Cosmetic
 // only -- doesn't need to be pixel-precise, just visible at a glance.
@@ -158,26 +160,24 @@ void drawGradientRingAt(int16_t centerX, bool haveReading, float tempF,
                          uint16_t backgroundColor) {
     float span = max(scaleHighF - scaleLowF, 1.0f);
 
-    // Band count derives from the scale width, not a fixed constant --
-    // this is what makes the ring's hash marks track the user's min/max.
-    // Capped at 60 as a sanity ceiling against a runaway config.
-    float bandCountF = constrain(roundf(span / RING_TICK_INTERVAL_F), 1.0f, 60.0f);
-    uint8_t bandCount = static_cast<uint8_t>(bandCountF);
-    float bandSweep = GAUGE_ARC_SWEEP_DEG / bandCount;
+    // Slice count derives from the arc sweep, not the scale width --
+    // unlike the old banded version, slice count no longer needs to
+    // track min/max at all, since there's nothing to align to.
+    uint16_t sliceCount = static_cast<uint16_t>(ceilf(GAUGE_ARC_SWEEP_DEG / RING_GRADIENT_SLICE_DEG));
+    float sliceSweep = GAUGE_ARC_SWEEP_DEG / sliceCount;
 
+    // Safety net against any float-rounding gap at the tail of the sweep
+    // -- the slice loop below should cover it exactly, but this costs
+    // one cheap extra fillArc if it doesn't.
     drawGaugeArcAt(centerX, GAUGE_ARC_START_DEG, GAUGE_ARC_SWEEP_DEG, backgroundColor);
 
-    for (uint8_t i = 0; i < bandCount; i++) {
-        float bandStartF = scaleLowF + span * (static_cast<float>(i) / bandCount);
-        float bandEndF   = scaleLowF + span * (static_cast<float>(i + 1) / bandCount);
-        uint16_t bandColor = colorForRuuviGradientF((bandStartF + bandEndF) * 0.5f,
-                                                      scaleLowF, scaleHighF,
-                                                      comfortLowF, comfortHighF);
-
-        float segStart = GAUGE_ARC_START_DEG + i * bandSweep + GAUGE_SEGMENT_GAP_DEG * 0.5f;
-        float segEnd = GAUGE_ARC_START_DEG + (i + 1) * bandSweep - GAUGE_SEGMENT_GAP_DEG * 0.5f;
-        float visibleSweep = max(0.0f, segEnd - segStart);
-        drawGaugeArcAt(centerX, segStart, visibleSweep, bandColor);
+    for (uint16_t i = 0; i < sliceCount; i++) {
+        float sliceStartDeg = GAUGE_ARC_START_DEG + i * sliceSweep;
+        float sliceMidFrac = (i + 0.5f) / sliceCount;
+        float sliceTempF = scaleLowF + span * sliceMidFrac;
+        uint16_t sliceColor = colorForRuuviGradientF(sliceTempF, scaleLowF, scaleHighF,
+                                                       comfortLowF, comfortHighF);
+        drawGaugeArcAt(centerX, sliceStartDeg, sliceSweep, sliceColor);
     }
 
     if (haveReading) {
