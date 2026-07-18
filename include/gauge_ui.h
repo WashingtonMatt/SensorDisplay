@@ -67,7 +67,7 @@ void drawSegmentedGaugeArcAt(int16_t centerX, float fillSweepDeg,
 // The green "comfort" plateau sits between [comfortLowF, comfortHighF]
 // (independently configurable per RuuviTag -- wide for outdoor, tight for
 // a fridge). Always fully lit, regardless of whether there's a current
-// reading. A short black wedge marks the current reading's position;
+// reading. A short white wedge marks the current reading's position;
 // pass haveReading=false to hide it (e.g. no signal yet). Readings
 // outside [scaleLowF, scaleHighF] clamp the wedge to the nearest ring
 // end rather than disappearing.

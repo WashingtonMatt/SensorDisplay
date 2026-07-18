@@ -113,7 +113,7 @@ void drawSegmentedGaugeArcAt(int16_t centerX, float fillSweepDeg,
 // continuous gradient rather than visible steps, without the draw-call
 // count of a true per-pixel fill. No gap between slices (unlike the
 // segmented gauge/hash-mark look elsewhere) so nothing on the ring itself
-// competes visually with the black indicator wedge.
+// competes visually with the white indicator wedge.
 static constexpr float RING_GRADIENT_SLICE_DEG = 2.0f;
 
 // How wide (in degrees) the current-reading indicator wedge is. Cosmetic
@@ -186,7 +186,7 @@ void drawGradientRingAt(int16_t centerX, bool haveReading, float tempF,
         float indicatorStart = constrain(indicatorCenterDeg - RING_INDICATOR_WIDTH_DEG * 0.5f,
                                           GAUGE_ARC_START_DEG,
                                           GAUGE_ARC_START_DEG + GAUGE_ARC_SWEEP_DEG - RING_INDICATOR_WIDTH_DEG);
-        drawGaugeArcAt(centerX, indicatorStart, RING_INDICATOR_WIDTH_DEG, COLOR_BLACK_SOFT);
+        drawGaugeArcAt(centerX, indicatorStart, RING_INDICATOR_WIDTH_DEG, WHITE);
     }
 }
 
