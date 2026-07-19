@@ -11,6 +11,7 @@
 #include "ble_scan.h"
 #include "render.h"
 #include "readings.h"
+#include "clock.h"
 
 static AppConfig appConfig;
 static PageEntry activePages[3 + MAX_RUUVITAGS]; // 2 Victron + up to 4 RuuviTag + 1 always-present SLEEP_SCREEN
@@ -143,13 +144,27 @@ static bool tapHitSettingsButton(const TouchEvent &event) {
 static constexpr int16_t MENU_ROW_X = 40;
 static constexpr int16_t MENU_ROW_W = 160;
 static constexpr int16_t MENU_ROW_H = 24;
-static constexpr int16_t MENU_ROW_1_Y = 40;
-static constexpr int16_t MENU_ROW_2_Y = 74;
-static constexpr int16_t MENU_ROW_3_Y = 108;
-static constexpr int16_t MENU_ROW_4_Y = 142;
-static constexpr uint8_t SETTINGS_MENU_PAGE_COUNT = 2;
+static constexpr int16_t MENU_ROW_1_Y = 52;
+static constexpr int16_t MENU_ROW_2_Y = 86;
+static constexpr int16_t MENU_ROW_3_Y = 120;
+static constexpr int16_t MENU_ROW_4_Y = 154;
 
-static uint8_t settingsMenuPage = 0; // 0: Grid/Rotation/Bright/Night Bright, 1: Sleep/Night/WiFi Setup
+// The clock-set page (settings page 2, Hour/Min/AM-PM) only needs 3 rows,
+// not 4, so it gets its own row positions rather than reusing
+// MENU_ROW_1/2/3_Y: on a 240px round display the usable width at a given
+// row shrinks fast near the top (the row box has to fit inside the
+// circular glass, not just the square framebuffer), and the split
+// left/right tap zones on this page are exactly the ones that felt hard
+// to hit reliably up near the old row 1 position. Starting lower and
+// spreading the 3 rows across the room freed up by dropping row 4 gives
+// every row -- especially Hour -- more clearance from the curve.
+static constexpr int16_t CLOCK_ROW_1_Y = 60;
+static constexpr int16_t CLOCK_ROW_2_Y = 100;
+static constexpr int16_t CLOCK_ROW_3_Y = 140;
+
+static constexpr uint8_t SETTINGS_MENU_PAGE_COUNT = 3;
+
+static uint8_t settingsMenuPage = 0; // 0: Grid/Rotation/Bright/Night Bright, 1: Sleep/Night/WiFi Setup, 2: Hour/Minute/AM-PM (clock set)
 
 static const uint16_t TIMEOUT_OPTIONS[] = {0, 10, 30, 60};
 static constexpr uint8_t TIMEOUT_OPTIONS_COUNT = 4;
@@ -220,10 +235,32 @@ static void drawMenuRow(int16_t y, const String &label, const String &value) {
     gfx->print(value);
 }
 
+// Clock-set rows (Hour/Minute/AM-PM, settings page 2) work differently
+// from the cycle-on-tap rows above: the left half of the row
+// decrements, the right half increments, and holding either half
+// fast-steps (see applyClockHold() below). The "-"/"+" hints make the
+// two tap zones discoverable, since split-row tapping isn't used
+// anywhere else in the app.
+static void drawStepperRow(int16_t y, const String &label, const String &value) {
+    gfx->drawRect(MENU_ROW_X, y, MENU_ROW_W, MENU_ROW_H, COLOR_VALUE_GRID);
+    gfx->setTextSize(1);
+    gfx->setTextColor(COLOR_DIM_TEXT);
+    gfx->setCursor(MENU_ROW_X + 6, y + 8);
+    gfx->print("-");
+    gfx->setCursor(MENU_ROW_X + MENU_ROW_W - 12, y + 8);
+    gfx->print("+");
+
+    String text = label + " " + value;
+    int16_t textWidth = text.length() * 6;
+    gfx->setTextColor(WHITE);
+    gfx->setCursor(MENU_ROW_X + (MENU_ROW_W - textWidth) / 2, y + 8);
+    gfx->print(text);
+}
+
 // Small dot row showing which of the two settings pages is active.
 static void drawMenuPageDots() {
     constexpr int16_t DOT_SPACING = 14;
-    constexpr int16_t DOT_Y = 176;
+    constexpr int16_t DOT_Y = 190;
     int16_t startX = 120 - (SETTINGS_MENU_PAGE_COUNT - 1) * DOT_SPACING / 2;
     for (uint8_t i = 0; i < SETTINGS_MENU_PAGE_COUNT; i++) {
         int16_t x = startX + i * DOT_SPACING;
@@ -239,7 +276,7 @@ static void drawSettingsMenu() {
     gfx->fillScreen(COLOR_PANEL_BLUE);
     gfx->setTextColor(WHITE);
     gfx->setTextSize(2);
-    gfx->setCursor(56, 6);
+    gfx->setCursor(56, 24);
     gfx->print("Settings");
 
     if (settingsMenuPage == 0) {
@@ -247,10 +284,16 @@ static void drawSettingsMenu() {
         drawMenuRow(MENU_ROW_2_Y, "Rotation", String(rotationLabel(appConfig.display.rotation)) + " deg");
         drawMenuRow(MENU_ROW_3_Y, "Bright", brightnessLabel(appConfig.display.dimmingPct));
         drawMenuRow(MENU_ROW_4_Y, "Night Bright", nightBrightnessLabel(appConfig.display.nightModeDimmingPct));
-    } else {
+    } else if (settingsMenuPage == 1) {
         drawMenuRow(MENU_ROW_1_Y, "Sleep", timeoutLabel(appConfig.display.timeoutS));
         drawMenuRow(MENU_ROW_2_Y, "Night", timeoutLabel(appConfig.display.nightModeTimeoutS));
         drawMenuRow(MENU_ROW_3_Y, "WiFi Setup", "Start >");
+    } else {
+        char hourStr[3], minuteStr[3], ampmStr[3];
+        clockFormat12Hour(hourStr, sizeof(hourStr), minuteStr, sizeof(minuteStr), ampmStr, sizeof(ampmStr));
+        drawStepperRow(CLOCK_ROW_1_Y, "Hour", String(hourStr));
+        drawStepperRow(CLOCK_ROW_2_Y, "Min", String(minuteStr));
+        drawStepperRow(CLOCK_ROW_3_Y, "AM/PM", String(ampmStr));
     }
 
     drawMenuPageDots();
@@ -262,6 +305,80 @@ static bool tapInRow(const TouchEvent &event, int16_t rowY) {
     if (!event.tapped) return false;
     return event.tapX >= MENU_ROW_X && event.tapX <= MENU_ROW_X + MENU_ROW_W &&
            event.tapY >= rowY && event.tapY <= rowY + MENU_ROW_H;
+}
+
+// Which half of a stepper row (Hour/Min/AM-PM, settings page 2) a tap or
+// an in-progress hold landed in: -1 = left ("-"), +1 = right ("+"), 0 =
+// neither. Shared by tap-to-step-by-1 and hold-to-fast-step below.
+static int8_t stepperTapDirection(const TouchEvent &event, int16_t rowY) {
+    if (!tapInRow(event, rowY)) return 0;
+    return (event.tapX < (MENU_ROW_X + MENU_ROW_W / 2)) ? -1 : 1;
+}
+
+static int8_t stepperHoldDirection(const TouchEvent &event, int16_t rowY) {
+    if (!event.held) return 0;
+    if (event.heldX < MENU_ROW_X || event.heldX > MENU_ROW_X + MENU_ROW_W) return 0;
+    if (event.heldY < rowY || event.heldY > rowY + MENU_ROW_H) return 0;
+    return (event.heldX < (MENU_ROW_X + MENU_ROW_W / 2)) ? -1 : 1;
+}
+
+static constexpr uint32_t CLOCK_HOLD_REPEAT_INITIAL_MS = 350; // delay before the 2nd step of a hold
+static constexpr uint32_t CLOCK_HOLD_REPEAT_FAST_MS = 80;     // fastest repeat rate once held a while
+static constexpr uint32_t CLOCK_HOLD_ACCELERATE_AFTER_MS = 2000; // held this long -> switch to fastest rate
+
+static void applyClockRowStep(uint8_t rowIdx, int8_t dir) {
+    if (rowIdx == 0) {
+        clockAdjustMinutes(dir * 60); // Hour
+    } else {
+        clockAdjustMinutes(dir * 1); // Minute
+    }
+}
+
+// Press-and-hold fast-stepping for the Hour/Minute rows on the clock-set
+// page. Runs on every call while that page is showing, independent of
+// tapped/swiped, since a hold reports `held` on every poll rather than
+// firing once like a tap does. AM/PM (row 3) is deliberately excluded --
+// a 2-state toggle gets nothing from fast-stepping. A hold never also
+// produces a `tapped` on release (see touch.cpp), so the single-tap
+// handling further down never double-steps against this.
+static void handleClockHold(const TouchEvent &event) {
+    static uint8_t heldRow = 255; // 255 = nothing currently held
+    static int8_t heldDirection = 0;
+    static uint32_t nextRepeatMs = 0;
+
+    uint8_t rowIdx = 0;
+    int8_t dir = stepperHoldDirection(event, CLOCK_ROW_1_Y);
+    if (dir == 0) {
+        rowIdx = 1;
+        dir = stepperHoldDirection(event, CLOCK_ROW_2_Y);
+    }
+
+    if (dir == 0) {
+        heldRow = 255;
+        heldDirection = 0;
+        return;
+    }
+
+    if (heldRow != rowIdx || heldDirection != dir) {
+        // A new hold just started (or moved to a different row/half) --
+        // step once immediately so it doesn't feel laggy, then wait
+        // before the first repeat.
+        heldRow = rowIdx;
+        heldDirection = dir;
+        applyClockRowStep(rowIdx, dir);
+        nextRepeatMs = millis() + CLOCK_HOLD_REPEAT_INITIAL_MS;
+        drawSettingsMenu();
+        return;
+    }
+
+    if (millis() < nextRepeatMs) return;
+
+    applyClockRowStep(rowIdx, dir);
+    uint32_t interval = (event.heldDurationMs > CLOCK_HOLD_ACCELERATE_AFTER_MS)
+                             ? CLOCK_HOLD_REPEAT_FAST_MS
+                             : CLOCK_HOLD_REPEAT_INITIAL_MS;
+    nextRepeatMs = millis() + interval;
+    drawSettingsMenu();
 }
 
 static void handleSettingsMenuTap(const TouchEvent &event) {
@@ -277,6 +394,10 @@ static void handleSettingsMenuTap(const TouchEvent &event) {
         settingsMenuPage = (settingsMenuPage + 1) % SETTINGS_MENU_PAGE_COUNT;
         drawSettingsMenu();
         return;
+    }
+
+    if (settingsMenuPage == 2) {
+        handleClockHold(event); // no-op unless a stationary touch on the Hour/Min rows has passed the hold threshold
     }
 
     if (settingsMenuPage == 1 && tapInRow(event, MENU_ROW_3_Y)) {
@@ -299,13 +420,32 @@ static void handleSettingsMenuTap(const TouchEvent &event) {
             cycleOption(appConfig.display.nightModeDimmingPct, NIGHT_BRIGHTNESS_OPTIONS, NIGHT_BRIGHTNESS_OPTIONS_COUNT);
             changed = true;
         }
-    } else {
+    } else if (settingsMenuPage == 1) {
         if (tapInRow(event, MENU_ROW_1_Y)) {
             cycleOption(appConfig.display.timeoutS, TIMEOUT_OPTIONS, TIMEOUT_OPTIONS_COUNT);
             changed = true;
         } else if (tapInRow(event, MENU_ROW_2_Y)) {
             cycleOption(appConfig.display.nightModeTimeoutS, TIMEOUT_OPTIONS, TIMEOUT_OPTIONS_COUNT);
             changed = true;
+        }
+    } else {
+        // settingsMenuPage == 2 -- single tap steps by exactly 1 (Hour:
+        // 1 hour, Minute: 1 minute); AM/PM toggle is a flat 12h flip.
+        // Not routed through `changed`/storageSaveAll: the clock is
+        // in-RAM only (no RTC to persist to), same as the portal
+        // auto-sync path.
+        int8_t hourDir = stepperTapDirection(event, CLOCK_ROW_1_Y);
+        int8_t minDir = stepperTapDirection(event, CLOCK_ROW_2_Y);
+        int8_t ampmDir = stepperTapDirection(event, CLOCK_ROW_3_Y);
+        if (hourDir != 0) {
+            clockAdjustMinutes(hourDir * 60);
+            drawSettingsMenu();
+        } else if (minDir != 0) {
+            clockAdjustMinutes(minDir * 1);
+            drawSettingsMenu();
+        } else if (ampmDir != 0) {
+            clockAdjustMinutes(720);
+            drawSettingsMenu();
         }
     }
 

@@ -9,6 +9,14 @@ static constexpr float SWIPE_HORIZONTAL_BIAS = 1.25f;
 static constexpr int16_t TAP_MAX_MOVEMENT_PIXELS = 15;
 static constexpr uint32_t TAP_MAX_DURATION_MS = 600;
 
+// A touch that's stayed within TAP_MAX_MOVEMENT_PIXELS of where it
+// started for longer than this is reported as `held` on every poll
+// until release. Deliberately shorter than TAP_MAX_DURATION_MS so a
+// hold-and-release still gets live `held` feedback before the release
+// duration check would otherwise have let it fall through as a tap --
+// see the holdReported latch below for how that double-fire is avoided.
+static constexpr uint32_t HOLD_START_MS = 400;
+
 void touchInit() {
     Wire.begin(PIN_TOUCH_SDA, PIN_TOUCH_SCL);
 }
@@ -79,6 +87,11 @@ TouchEvent touchPoll() {
     static bool wasTouched = false;
     static int16_t startX = 0, startY = 0, lastX = 0, lastY = 0;
     static uint32_t startMs = 0;
+    // Latches true once `held` has fired for this touch, so that
+    // lifting the finger after a hold never also reports a `tapped` --
+    // without this, a hold released at e.g. 450ms (past HOLD_START_MS
+    // but still under TAP_MAX_DURATION_MS) would fire both.
+    static bool holdReported = false;
 
     TouchPoint point;
     if (!readTouchPoint(point)) {
@@ -90,10 +103,22 @@ TouchEvent touchPoll() {
             startX = point.x;
             startY = point.y;
             startMs = millis();
+            holdReported = false;
         }
         lastX = point.x;
         lastY = point.y;
         wasTouched = true;
+
+        int16_t dx = point.x - startX;
+        int16_t dy = point.y - startY;
+        uint32_t heldMs = millis() - startMs;
+        if (abs(dx) <= TAP_MAX_MOVEMENT_PIXELS && abs(dy) <= TAP_MAX_MOVEMENT_PIXELS && heldMs >= HOLD_START_MS) {
+            event.held = true;
+            event.heldDurationMs = heldMs;
+            event.heldX = point.x;
+            event.heldY = point.y;
+            holdReported = true;
+        }
         return event;
     }
 
@@ -116,7 +141,8 @@ TouchEvent touchPoll() {
         return event;
     }
 
-    if (durationMs < TAP_MAX_DURATION_MS && absDx <= TAP_MAX_MOVEMENT_PIXELS && absDy <= TAP_MAX_MOVEMENT_PIXELS) {
+    if (!holdReported && durationMs < TAP_MAX_DURATION_MS &&
+        absDx <= TAP_MAX_MOVEMENT_PIXELS && absDy <= TAP_MAX_MOVEMENT_PIXELS) {
         event.tapped = true;
         event.tapX = lastX;
         event.tapY = lastY;

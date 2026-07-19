@@ -13,6 +13,17 @@ struct TouchEvent {
     bool tapped = false;       // short touch with minimal movement
     int16_t tapX = 0;
     int16_t tapY = 0;
+
+    // Reported on every poll *while* a touch is in progress (unlike
+    // swiped/tapped, which only fire once on release), once it's been
+    // held roughly stationary for longer than a normal tap. Intended for
+    // press-and-hold fast-step controls (e.g. the Hour/Minute clock-set
+    // rows) -- a hold that gets released never also fires `tapped`, so
+    // callers don't need to guard against a double-step.
+    bool held = false;
+    uint32_t heldDurationMs = 0;
+    int16_t heldX = 0;
+    int16_t heldY = 0;
 };
 
 // Initializes the I2C bus (Wire) and the CST816 touch controller.

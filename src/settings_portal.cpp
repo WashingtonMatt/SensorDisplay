@@ -6,6 +6,7 @@
 #include "gauge_ui.h"
 #include "mac_utils.h"
 #include "diag_log.h"
+#include "clock.h"
 #include <WiFi.h>
 #include <WebServer.h>
 #include <esp_heap_caps.h>
@@ -85,6 +86,18 @@ static void sendHtmlHeader(HtmlChunker &out, const String &title) {
 }
 
 static void sendHtmlFooter(HtmlChunker &out) {
+    // Fires on every portal page load (not just the first), so a
+    // multi-page browsing session keeps resyncing rather than only
+    // catching the clock once. Fire-and-forget: doesn't block the page,
+    // and a failed request just means the clock stays whatever it was.
+    // Sends the phone's LOCAL time -- no timezone/UTC math needed here
+    // or on the device, since the phone is already showing local time
+    // for wherever the RV is parked.
+    out.add("<script>"
+            "(function(){var d=new Date();var m=d.getHours()*60+d.getMinutes();"
+            "fetch('/time/sync',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},"
+            "body:'minutes='+m}).catch(function(){});})();"
+            "</script>");
     out.add("</body></html>");
     out.flush();
 }
@@ -479,9 +492,22 @@ static void handleStatusPing() {
     server.send(200, "application/json", "{\"ok\":true}");
 }
 
+// --- Time sync (phone's local clock, pushed by the JS in sendHtmlFooter) ---
+static void handleTimeSync() {
+    noteActivity();
+    if (server.hasArg("minutes")) {
+        int minutes = server.arg("minutes").toInt();
+        if (minutes >= 0 && minutes < 1440) {
+            clockSetMinutesSinceMidnight(minutes);
+        }
+    }
+    server.send(200, "application/json", "{\"ok\":true}");
+}
+
 static void registerRoutes() {
     server.on("/", HTTP_GET, handleRoot);
     server.on("/status", HTTP_GET, handleStatusPing);
+    server.on("/time/sync", HTTP_POST, handleTimeSync);
 
     server.on("/ruuvi", HTTP_GET, handleRuuviGet);
     server.on("/ruuvi/save", HTTP_POST, handleRuuviSave);

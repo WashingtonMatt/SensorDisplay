@@ -2,6 +2,7 @@
 #include "display.h"
 #include "gauge_ui.h"
 #include "readings.h"
+#include "clock.h"
 #include <math.h>
 
 static bool isStale(uint32_t seenMs) {
@@ -224,12 +225,14 @@ static void drawPlaceholderClock(int16_t centerX, int16_t topY, uint16_t color, 
 // across four unrelated readings), so it's drawn fully lit as a
 // thematic frame rather than a proportional gauge.
 //
-// The big center number is a placeholder "12:00" -- wiring up a real
-// clock needs a time source (NTP, since this board has no RTC) and is
-// a deliberate follow-up, not done here. Split into "12:00" (large
-// font) + "AM" (small, below) rather than one long "12:00 AM" string,
-// since the large AA font was sized for short strings like "72%" and
-// a full clock string would run wider than comfortably fits the ring.
+// The center clock comes from clock.h -- an in-RAM minutes-since-midnight
+// anchor, since this board has no RTC. It's set either by the settings
+// portal auto-pushing the phone's local time on page load, or by the
+// on-device Hour/Minute/AM-PM rows (3rd settings-menu page). Before
+// anything has set it, shows "--:--" rather than a fake time. Split into
+// hour/minute (large font) + AM/PM (small, below) rather than one long
+// string, since the large AA font was sized for short strings like "72%"
+// and a full clock string would run wider than comfortably fits the ring.
 static void renderSleepPage(const AppConfig &cfg, bool showGrid) {
     gfx->fillScreen(COLOR_BLACK_SOFT);
 
@@ -239,7 +242,9 @@ static void renderSleepPage(const AppConfig &cfg, bool showGrid) {
     if (showGrid) drawValueGridAt(GAUGE_CENTER_X, COLOR_NIGHT_RED_DIM);
 
     drawTinyLabel("NIGHT MODE", 120, 30, COLOR_NIGHT_RED_DIM);
-    drawPlaceholderClock(120, 40, COLOR_NIGHT_RED, COLOR_BLACK_SOFT, "12", "00", "AM");
+    char hourStr[3], minuteStr[3], ampmStr[3];
+    clockFormat12Hour(hourStr, sizeof(hourStr), minuteStr, sizeof(minuteStr), ampmStr, sizeof(ampmStr));
+    drawPlaceholderClock(120, 40, COLOR_NIGHT_RED, COLOR_BLACK_SOFT, hourStr, minuteStr, ampmStr);
 
     // Row 2: Shunt battery % (left), Solar watts (right)
     bool haveShunt = latestReadings.shunt.valid && !isStale(latestReadings.shuntSeenMs);
