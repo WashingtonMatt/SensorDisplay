@@ -109,32 +109,48 @@ VictronShuntReading decodeVictronShunt(const uint8_t *mfgData, size_t len,
 
     // Past this point the MAC matched the configured shunt, so any
     // failure below is worth logging -- it means the device is in range
-    // and broadcasting, but something about the decode is off.
+    // and broadcasting, but something about the decode is off. Each site
+    // is throttled independently: these fire on every single matching
+    // advertisement otherwise (roughly once a second), which can flood
+    // the 24-line diag_log ring buffer and push out everything else --
+    // including diagnostics for other devices -- within seconds.
     if (!isVictronInstantReadout(mfgData, len) || len < 11) {
-        char buf[96];
-        snprintf(buf, sizeof(buf), "[victron] shunt MAC matched but advertisement isn't Instant Readout format (len=%u)",
-                 static_cast<unsigned>(len));
-        diagLog(buf);
+        static uint32_t lastLogMs = 0;
+        if (millis() - lastLogMs > 5000) {
+            lastLogMs = millis();
+            char buf[96];
+            snprintf(buf, sizeof(buf), "[victron] shunt MAC matched but advertisement isn't Instant Readout format (len=%u)",
+                     static_cast<unsigned>(len));
+            diagLog(buf);
+        }
         return out;
     }
 
     const uint8_t *payload = mfgData + 2;
     size_t payloadLen = len - 2;
     if (payloadLen < 9 || payload[4] != VICTRON_BATTERY_MONITOR_RECORD) {
-        char buf[144];
-        snprintf(buf, sizeof(buf),
-                 "[victron] shunt MAC matched but record type is 0x%02X, expected 0x%02X (battery monitor) "
-                 "-- check you didn't put the MPPT's MAC in the shunt field",
-                 payloadLen >= 5 ? payload[4] : 0xFF, VICTRON_BATTERY_MONITOR_RECORD);
-        diagLog(buf);
+        static uint32_t lastLogMs = 0;
+        if (millis() - lastLogMs > 5000) {
+            lastLogMs = millis();
+            char buf[144];
+            snprintf(buf, sizeof(buf),
+                     "[victron] shunt MAC matched but record type is 0x%02X, expected 0x%02X (battery monitor) "
+                     "-- check you didn't put the MPPT's MAC in the shunt field",
+                     payloadLen >= 5 ? payload[4] : 0xFF, VICTRON_BATTERY_MONITOR_RECORD);
+            diagLog(buf);
+        }
         return out;
     }
 
     uint8_t plain[24] = {};
     size_t plainLen = sizeof(plain);
     if (!decryptVictronPayload(payload, payloadLen, cfg.shuntAesKey, plain, plainLen)) {
-        diagLog("[victron] shunt MAC and record type matched, but the AES key check failed "
-                "-- re-check the 32-character hex key from the Victron app");
+        static uint32_t lastLogMs = 0;
+        if (millis() - lastLogMs > 5000) {
+            lastLogMs = millis();
+            diagLog("[victron] shunt MAC and record type matched, but the AES key check failed "
+                    "-- re-check the 32-character hex key from the Victron app");
+        }
         return out;
     }
     if (plainLen < 14) return out;
@@ -162,30 +178,42 @@ VictronMpptReading decodeVictronMppt(const uint8_t *mfgData, size_t len,
     if (!cfg.mpptConfigured || !macMatches(sourceMac, cfg.mpptMac)) return out;
 
     if (!isVictronInstantReadout(mfgData, len) || len < 11) {
-        char buf[96];
-        snprintf(buf, sizeof(buf), "[victron] MPPT MAC matched but advertisement isn't Instant Readout format (len=%u)",
-                 static_cast<unsigned>(len));
-        diagLog(buf);
+        static uint32_t lastLogMs = 0;
+        if (millis() - lastLogMs > 5000) {
+            lastLogMs = millis();
+            char buf[96];
+            snprintf(buf, sizeof(buf), "[victron] MPPT MAC matched but advertisement isn't Instant Readout format (len=%u)",
+                     static_cast<unsigned>(len));
+            diagLog(buf);
+        }
         return out;
     }
 
     const uint8_t *payload = mfgData + 2;
     size_t payloadLen = len - 2;
     if (payloadLen < 9 || payload[4] != VICTRON_SOLAR_CHARGER_RECORD) {
-        char buf[144];
-        snprintf(buf, sizeof(buf),
-                 "[victron] MPPT MAC matched but record type is 0x%02X, expected 0x%02X (solar charger) "
-                 "-- check you didn't put the shunt's MAC in the MPPT field",
-                 payloadLen >= 5 ? payload[4] : 0xFF, VICTRON_SOLAR_CHARGER_RECORD);
-        diagLog(buf);
+        static uint32_t lastLogMs = 0;
+        if (millis() - lastLogMs > 5000) {
+            lastLogMs = millis();
+            char buf[144];
+            snprintf(buf, sizeof(buf),
+                     "[victron] MPPT MAC matched but record type is 0x%02X, expected 0x%02X (solar charger) "
+                     "-- check you didn't put the shunt's MAC in the MPPT field",
+                     payloadLen >= 5 ? payload[4] : 0xFF, VICTRON_SOLAR_CHARGER_RECORD);
+            diagLog(buf);
+        }
         return out;
     }
 
     uint8_t plain[16] = {};
     size_t plainLen = sizeof(plain);
     if (!decryptVictronPayload(payload, payloadLen, cfg.mpptAesKey, plain, plainLen)) {
-        diagLog("[victron] MPPT MAC and record type matched, but the AES key check failed "
-                "-- re-check the 32-character hex key from the Victron app");
+        static uint32_t lastLogMs = 0;
+        if (millis() - lastLogMs > 5000) {
+            lastLogMs = millis();
+            diagLog("[victron] MPPT MAC and record type matched, but the AES key check failed "
+                    "-- re-check the 32-character hex key from the Victron app");
+        }
         return out;
     }
     if (plainLen < 12) return out;

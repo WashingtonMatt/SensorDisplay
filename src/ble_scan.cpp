@@ -4,6 +4,7 @@
 #include "mac_utils.h"
 #include "diag_log.h"
 #include <NimBLEDevice.h>
+#include <string.h>
 
 static const AppConfig *cfgPtr = nullptr;
 
@@ -34,9 +35,9 @@ class ScanCallbacks : public NimBLEScanCallbacks {
                 static uint32_t lastVictronLogMs = 0;
                 if (millis() - lastVictronLogMs > 3000) {
                     lastVictronLogMs = millis();
-                    char buf[80];
-                    snprintf(buf, sizeof(buf), "[ble] Victron advertisement from %s (len=%u)",
-                             device->getAddress().toString().c_str(), static_cast<unsigned>(len));
+                    char buf[96];
+                    snprintf(buf, sizeof(buf), "[ble] Victron advertisement from %s (len=%u, rssi=%d)",
+                             device->getAddress().toString().c_str(), static_cast<unsigned>(len), device->getRSSI());
                     diagLog(buf);
                 }
             }
@@ -58,7 +59,28 @@ class ScanCallbacks : public NimBLEScanCallbacks {
 
         for (uint8_t i = 0; i < MAX_RUUVITAGS; i++) {
             if (!cfgPtr->ruuviTags[i].configured) continue;
+            if (memcmp(sourceMac, cfgPtr->ruuviTags[i].mac, 6) != 0) continue;
+
             RuuviReading r = decodeRuuviTag(data, len, sourceMac, cfgPtr->ruuviTags[i]);
+
+            // Diagnostic: this advertisement's MAC matches a configured
+            // RuuviTag slot. Logging it here (regardless of whether the
+            // decode above succeeded) is the key signal for "is the radio
+            // even hearing this tag" vs. "hearing it but failing to
+            // decode it" -- if this line never shows up in the portal's
+            // Debug Log while the tag is confirmed nearby and advertising,
+            // that's a scan/range/interference problem, not a data-format
+            // one. Throttled per-tag same as the Victron block above.
+            static uint32_t lastRuuviLogMs[MAX_RUUVITAGS] = {0};
+            if (millis() - lastRuuviLogMs[i] > 3000) {
+                lastRuuviLogMs[i] = millis();
+                char buf[120];
+                snprintf(buf, sizeof(buf), "[ble] RuuviTag slot %u (%s) advertisement seen, len=%u, rssi=%d, decoded=%s",
+                         static_cast<unsigned>(i), cfgPtr->ruuviTags[i].label, static_cast<unsigned>(len),
+                         device->getRSSI(), r.valid ? "yes" : "no");
+                diagLog(buf);
+            }
+
             if (r.valid) {
                 readingsRecordRuuvi(i, r, millis());
                 return;
