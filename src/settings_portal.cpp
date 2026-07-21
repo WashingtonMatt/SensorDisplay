@@ -561,6 +561,13 @@ bool settingsPortalStart(AppConfig &cfg) {
     cfgPtr = &cfg;
 
     bleScanPause(); // radio contention mitigation — one shared 2.4GHz radio on ESP32-C3
+    // bleScanPause()'s stop() call returns before the NimBLE host task (a
+    // separate FreeRTOS task) has necessarily finished releasing the
+    // radio. Without a beat here, WiFi.mode(WIFI_AP) can start negotiating
+    // for the same radio while that's still in flight. delay() yields to
+    // other tasks (unlike a busy-wait), so this gives the host task a
+    // chance to actually run and finish.
+    delay(100);
 
     WiFi.mode(WIFI_AP);
     WiFi.softAP("SensorDisplay-Setup");
@@ -581,6 +588,15 @@ bool settingsPortalStart(AppConfig &cfg) {
 void settingsPortalStop() {
     server.stop();
     WiFi.softAPdisconnect(true);
+    // Same reasoning as the delay in settingsPortalStart(): give the radio
+    // a beat to settle before esp_wifi_deinit() (triggered by
+    // WiFi.mode(WIFI_OFF)) runs. This is the specific transition where a
+    // "wifi:timeout when WiFi un-init, type=4" error was observed in
+    // testing -- a known ESP32 WiFi/BLE coexistence timing issue, not
+    // something introduced by this codebase. Not 100% confirmed yet that
+    // this is what's causing the portal crash/reset bug, but it's a
+    // well-documented failure mode worth mitigating regardless.
+    delay(100);
     WiFi.mode(WIFI_OFF);
 
     bleScanResume();
@@ -593,7 +609,18 @@ void settingsPortalStop() {
 void settingsPortalLoop() {
     if (!portalActive) return;
 
+    uint32_t clientStartMs = millis();
     server.handleClient();
+    uint32_t clientElapsedMs = millis() - clientStartMs;
+    if (clientElapsedMs > 1000) {
+        // Anything over ~1s here is well past the fast/normal case --
+        // worth knowing about even before it gets close to the watchdog
+        // budget. handleClient()'s own documented worst case (a stalled
+        // client) is up to ~5s.
+        char buf[64];
+        snprintf(buf, sizeof(buf), "[portal] handleClient() took %lums", clientElapsedMs);
+        diagLog(buf);
+    }
     watchdogFeed();
 
     uint32_t freeBlock = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
