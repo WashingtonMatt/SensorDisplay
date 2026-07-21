@@ -605,17 +605,21 @@ bool settingsPortalStart(AppConfig &cfg) {
 
 void settingsPortalStop() {
     server.stop();
-    WiFi.softAPdisconnect(true);
-    // Same reasoning as the delay in settingsPortalStart(): give the radio
-    // a beat to settle before esp_wifi_deinit() (triggered by
-    // WiFi.mode(WIFI_OFF)) runs. This is the specific transition where a
-    // "wifi:timeout when WiFi un-init, type=4" error was observed in
-    // testing -- a known ESP32 WiFi/BLE coexistence timing issue, not
-    // something introduced by this codebase. Not 100% confirmed yet that
-    // this is what's causing the portal crash/reset bug, but it's a
-    // well-documented failure mode worth mitigating regardless.
-    delay(100);
-    WiFi.mode(WIFI_OFF);
+    WiFi.softAPdisconnect(true); // drops the AP -- network disappears from the phone, same as before
+    // Deliberately NOT calling WiFi.mode(WIFI_OFF) here. That call
+    // triggers esp_wifi_deinit() under the hood, and a 100ms settle delay
+    // before it was not enough to reliably avoid a
+    // "wifi:timeout when WiFi un-init, type=4" error -- confirmed by two
+    // separate captures, the second of which left the portal AP in a
+    // broken state (visible/connectable but every page failed to load)
+    // rather than just being a cosmetic log line. Skipping the deinit
+    // call entirely sidesteps that ESP32 WiFi/BLE coexistence bug outright
+    // rather than continuing to tune a delay against it. Trade-off: the
+    // WiFi driver stays initialized (idle, no AP, no connections) between
+    // portal sessions instead of being fully powered off -- a small
+    // ongoing power cost worth knowing about on a battery-powered device,
+    // but reliability matters more here given the portal was becoming
+    // fully unusable without a physical power cycle.
 
     bleScanResume();
 
