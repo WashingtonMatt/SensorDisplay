@@ -42,9 +42,25 @@ public:
         server_.send(200, "text/html", "");
     }
 
+    // Appends `s` in bounded slices rather than all at once. This matters
+    // for any caller passing in a large string in a single call (the
+    // Debug Log page's full diagLogGetAll() output, potentially several
+    // KB) -- appending it in one shot would do one large contiguous
+    // String allocation and then one large blocking sendContent() write,
+    // with watchdogFeed() only running *after* that write returns. If the
+    // write blocks on a slow/stalled client, the feed comes too late.
+    // Slicing keeps each flush (and its watchdogFeed()) to a small,
+    // bounded piece regardless of how big the input is.
     void add(const String &s) {
-        buffer_ += s;
-        if (buffer_.length() >= 900) flush();
+        size_t offset = 0;
+        size_t len = s.length();
+        while (offset < len) {
+            size_t remaining = len - offset;
+            size_t sliceLen = (remaining < MAX_APPEND_SLICE) ? remaining : MAX_APPEND_SLICE;
+            buffer_ += s.substring(offset, offset + sliceLen);
+            offset += sliceLen;
+            if (buffer_.length() >= FLUSH_THRESHOLD) flush();
+        }
     }
 
     void flush() {
@@ -56,6 +72,8 @@ public:
     }
 
 private:
+    static constexpr size_t FLUSH_THRESHOLD = 900;
+    static constexpr size_t MAX_APPEND_SLICE = 512;
     WebServer &server_;
     String buffer_;
 };
