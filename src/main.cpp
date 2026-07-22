@@ -12,6 +12,7 @@
 #include "render.h"
 #include "readings.h"
 #include "clock.h"
+#include "diag_log.h"
 
 static AppConfig appConfig;
 static PageEntry activePages[3 + MAX_RUUVITAGS]; // 2 Victron + up to 4 RuuviTag + 1 always-present SLEEP_SCREEN
@@ -493,6 +494,7 @@ void setup() {
 
 void loop() {
     watchdogFeed();
+    diagLogFlushToSerial(); // prints anything buffered by diagLog() calls from other tasks (e.g. NimBLE's scan callback) -- see diag_log.h
 
     TouchEvent event = touchPoll();
 
