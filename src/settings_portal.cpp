@@ -578,13 +578,10 @@ bool settingsPortalStart(AppConfig &cfg) {
 
     cfgPtr = &cfg;
 
-    bleScanPause(); // radio contention mitigation — one shared 2.4GHz radio on ESP32-C3
-    // bleScanPause()'s stop() call returns before the NimBLE host task (a
-    // separate FreeRTOS task) has necessarily finished releasing the
-    // radio. Without a beat here, WiFi.mode(WIFI_AP) can start negotiating
-    // for the same radio while that's still in flight. delay() yields to
-    // other tasks (unlike a busy-wait), so this gives the host task a
-    // chance to actually run and finish.
+    bleScanDeinit(); // radio contention mitigation — one shared 2.4GHz radio on ESP32-C3.
+    // Fully releases BLE (not just a scan stop) so there's no second
+    // radio user for WiFi to negotiate against while it comes up. A
+    // settle delay alone wasn't reliable here -- see ble_scan.h.
     delay(100);
 
     WiFi.mode(WIFI_AP);
@@ -605,27 +602,31 @@ bool settingsPortalStart(AppConfig &cfg) {
 
 void settingsPortalStop() {
     server.stop();
-    WiFi.softAPdisconnect(true); // drops the AP -- network disappears from the phone, same as before
-    // Deliberately NOT calling WiFi.mode(WIFI_OFF) here. That call
-    // triggers esp_wifi_deinit() under the hood, and a 100ms settle delay
-    // before it was not enough to reliably avoid a
-    // "wifi:timeout when WiFi un-init, type=4" error -- confirmed by two
-    // separate captures, the second of which left the portal AP in a
-    // broken state (visible/connectable but every page failed to load)
-    // rather than just being a cosmetic log line. Skipping the deinit
-    // call entirely sidesteps that ESP32 WiFi/BLE coexistence bug outright
-    // rather than continuing to tune a delay against it. Trade-off: the
-    // WiFi driver stays initialized (idle, no AP, no connections) between
-    // portal sessions instead of being fully powered off -- a small
-    // ongoing power cost worth knowing about on a battery-powered device,
-    // but reliability matters more here given the portal was becoming
-    // fully unusable without a physical power cycle.
-
-    bleScanResume();
+    WiFi.softAPdisconnect(true);
+    delay(100);
+    WiFi.mode(WIFI_OFF);
 
     portalActive = false;
     lastStopMs = millis();
-    Serial.println("[portal] stopped");
+
+    clockSaveToNvs(); // survive the reboot below -- see clock.h
+
+    Serial.println("[portal] stopped, rebooting to restore BLE scanning");
+    // Deliberately rebooting here rather than calling bleScanInit() to
+    // bring BLE back live. NimBLEDevice::deinit()/init() cycles are a
+    // documented reliability landmine in NimBLE-Arduino -- multiple
+    // upstream issues describe crashes, heap corruption, or BLE simply
+    // not coming back correctly after exactly this pattern, across
+    // several library versions. A full reboot runs through the same
+    // boot-time BLE init path that already works reliably every single
+    // power-on, instead of a runtime deinit/reinit cycle that doesn't
+    // have that same track record. Trade-off: the screen goes blank for
+    // a few seconds after closing the portal rather than instantly
+    // returning to sensor pages. Nothing is lost -- portal saves already
+    // write to flash immediately via storageSaveAll(), well before this
+    // point runs.
+    delay(50); // let the Serial.println above actually flush before restart
+    ESP.restart();
 }
 
 void settingsPortalLoop() {

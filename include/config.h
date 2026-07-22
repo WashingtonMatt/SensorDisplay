@@ -57,6 +57,7 @@ static constexpr const char* NVS_KEY_RUUVI_BLOB    = "ruuvi_cfg";
 
 // Display settings
 static constexpr const char* NVS_KEY_ROTATION      = "disp_rot";
+static constexpr const char* NVS_KEY_CLOCK_MINUTES = "clock_min";
 static constexpr const char* NVS_KEY_DIMMING       = "disp_dim";
 static constexpr const char* NVS_KEY_NIGHT_DIMMING = "disp_night_dim";
 static constexpr const char* NVS_KEY_TIMEOUT_S     = "disp_timeout";

@@ -112,12 +112,7 @@ void bleScanInit(const AppConfig &cfg) {
     diagLog("[ble] scan started");
 }
 
-void bleScanPause() {
-    NimBLEDevice::getScan()->stop();
-    diagLog("[ble] scan paused");
-}
-
-void bleScanResume() {
-    NimBLEDevice::getScan()->start(0, false, false);
-    diagLog("[ble] scan resumed");
+void bleScanDeinit() {
+    NimBLEDevice::deinit(true); // true = release controller memory too, not just stop scanning
+    diagLog("[ble] scan fully stopped (deinit) for portal WiFi transition");
 }

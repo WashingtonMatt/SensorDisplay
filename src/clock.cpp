@@ -1,5 +1,7 @@
 #include "clock.h"
+#include "config.h"
 #include <stdio.h>
+#include <Preferences.h>
 
 static constexpr int32_t MINUTES_PER_DAY = 1440;
 
@@ -61,4 +63,24 @@ void clockFormat12Hour(char *hourOut, size_t hourOutLen, char *minuteOut, size_t
     snprintf(hourOut, hourOutLen, "%u", hour12);
     snprintf(minuteOut, minuteOutLen, "%02u", minute);
     snprintf(ampmOut, ampmOutLen, isPM ? "PM" : "AM");
+}
+
+void clockSaveToNvs() {
+    if (!isSet) return;
+    Preferences prefs;
+    prefs.begin(NVS_NAMESPACE, /*readOnly=*/false);
+    prefs.putUShort(NVS_KEY_CLOCK_MINUTES, clockGetMinutesSinceMidnight());
+    prefs.end();
+}
+
+void clockLoadFromNvs() {
+    Preferences prefs;
+    prefs.begin(NVS_NAMESPACE, /*readOnly=*/true);
+    bool hasSaved = prefs.isKey(NVS_KEY_CLOCK_MINUTES);
+    uint16_t minutes = prefs.getUShort(NVS_KEY_CLOCK_MINUTES, 0);
+    prefs.end();
+
+    if (hasSaved) {
+        clockSetMinutesSinceMidnight(minutes);
+    }
 }

@@ -481,6 +481,8 @@ void setup() {
     // needing to reinit the scan.
     bleScanInit(appConfig);
 
+    clockLoadFromNvs(); // restores a portal-close-saved time, if any -- see clock.h
+
     settingsPortalSetOnSave(applyConfigChange);
 
     lastTouchActivityMs = millis();

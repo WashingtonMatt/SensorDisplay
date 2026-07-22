@@ -38,6 +38,25 @@ void clockAdjustMinutes(int16_t deltaMinutes);
 // first rather than trusting this alone.
 uint16_t clockGetMinutesSinceMidnight();
 
+// Persists the current minutes-since-midnight to flash (NVS). Call this
+// right before a deliberate reboot (the settings portal now reboots on
+// close -- see settingsPortalStop()) so the clock survives it. Restoring
+// on the next boot re-arms the millis() anchor fresh, so accuracy only
+// drifts by however long the reboot itself took (typically a few
+// seconds), not by how long the device had actually been running
+// beforehand. No-ops if the clock was never set. Deliberately NOT called
+// on every manual tap/hold-step adjustment -- that would mean frequent
+// flash writes during clock-setting, which is worse for flash wear and
+// UI responsiveness than accepting that an unexpected
+// crash/watchdog-reset (as opposed to a deliberate portal-close reboot)
+// still loses the clock, same as before this existed.
+void clockSaveToNvs();
+
+// Restores a previously-saved clock value on boot, if one exists. Call
+// once during setup(). No-ops (leaves the clock unset) if nothing was
+// ever saved.
+void clockLoadFromNvs();
+
 // Convenience formatter matching drawPlaceholderClock()'s three-part
 // split (hour string / zero-padded minute string / "AM" or "PM"). Safe
 // to call even when clockIsSet() is false -- fills all three with "--".
