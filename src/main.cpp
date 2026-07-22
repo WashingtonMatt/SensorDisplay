@@ -458,14 +458,11 @@ static void handleSettingsMenuTap(const TouchEvent &event) {
 
 void setup() {
     Serial.begin(115200);
-    Serial.println("[boot] Serial up");
 
     watchdogInit();
-    Serial.println("[boot] watchdog init done");
 
     storageLoadAll(appConfig);
     refreshPages();
-    Serial.println("[boot] storage loaded");
 
     if (!displayInit()) {
         Serial.println("[boot] display init reported a failure — continuing anyway, screen may be blank");
@@ -473,23 +470,18 @@ void setup() {
     displaySetRotation(appConfig.display.rotation);
     backlightInit();
     applyBacklightForCurrentPage();
-    Serial.println("[boot] display init done");
 
     touchInit();
     touchSetRotation(appConfig.display.rotation);
-    Serial.println("[boot] touch init done");
 
     readingsInit();
 
     // BLE scan reads appConfig by reference — settings-portal saves that
     // update appConfig in place will be picked up automatically without
     // needing to reinit the scan.
-    Serial.println("[boot] starting bleScanInit()...");
     bleScanInit(appConfig);
-    Serial.println("[boot] bleScanInit() returned");
 
     clockLoadFromNvs(); // restores a portal-close-saved time, if any -- see clock.h
-    Serial.println("[boot] clock loaded");
 
     settingsPortalSetOnSave(applyConfigChange);
 
@@ -501,18 +493,6 @@ void setup() {
 
 void loop() {
     watchdogFeed();
-
-    // Unconditional heartbeat, independent of BLE/portal state -- purely
-    // diagnostic, to answer whether loop() is actually running normally
-    // during a period with no other Serial output, or whether something
-    // upstream (setup(), or an earlier point in loop()) is stalled.
-    // Remove once the current BLE-silence issue is resolved.
-    static uint32_t lastHeartbeatMs = 0;
-    if (millis() - lastHeartbeatMs > 5000) {
-        lastHeartbeatMs = millis();
-        Serial.printf("[heartbeat] millis=%lu portalActive=%d freeHeap=%u\n",
-                      millis(), settingsPortalIsActive() ? 1 : 0, ESP.getFreeHeap());
-    }
 
     TouchEvent event = touchPoll();
 
